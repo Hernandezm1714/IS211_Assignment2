@@ -1,0 +1,124 @@
+"""
+
+import argparse
+import csv
+import logging
+import sys
+import urllib.request
+from datetime import datetime
+
+
+def downloadData(url):
+    """
+    Download the contents located at the given url and return it as a
+    string. No exceptions are caught here - that is handled by the caller.
+    """
+    response = urllib.request.urlopen(url)
+    return response.read().decode("utf-8")
+
+
+def processData(csvData):
+    """
+    Process the CSV contents (as a string) line by line and return a
+    dictionary mapping a person's ID -> (name, birthday) where birthday
+    is a Datetime object.
+
+    Lines with a malformed birthday (bad format or an invalid date) are
+    logged as an error via the 'assignment2' logger and skipped.
+    """
+    logger = logging.getLogger("assignment2")
+    personData = {}
+
+    reader = csv.reader(csvData.splitlines())
+
+    for linenum, row in enumerate(reader, start=1):
+        if not row:
+            continue
+
+        # Skip a header row like "id,name,birthday"
+        if linenum == 1 and row[0].strip().lower() == "id":
+            continue
+
+        if len(row) < 3:
+            continue
+
+        person_id = row[0].strip()
+        name = row[1].strip()
+        birthday_str = row[2].strip()
+
+        try:
+            birthday = datetime.strptime(birthday_str, "%d/%m/%Y")
+        except ValueError:
+            logger.error("Error processing line #%d for ID #%s", linenum, person_id)
+            continue
+
+        personData[person_id] = (name, birthday)
+
+    return personData
+
+
+def displayPerson(id, personData):
+    """
+    Print the name and birthday of the person identified by id in
+    personData. If no such person exists, print a "not found" message.
+    """
+    id = str(id)
+    if id not in personData:
+        print("No user found with that id")
+        return
+
+    name, birthday = personData[id]
+    date_str = birthday.strftime("%Y-%m-%d")
+    print(f"Person #{id} is {name} with a birthday of {date_str}")
+
+
+def setup_logger():
+    """Configure the 'assignment2' logger to write ERROR-level messages to error.log."""
+    logger = logging.getLogger("assignment2")
+    logger.setLevel(logging.ERROR)
+
+    handler = logging.FileHandler("error.log", mode="w")
+    handler.setLevel(logging.ERROR)
+    formatter = logging.Formatter("%(message)s")
+    handler.setFormatter(formatter)
+
+    logger.addHandler(handler)
+    return logger
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Look up people by ID from a remote CSV file.")
+    parser.add_argument(
+        "--url",
+        help="URL to the datafile",
+        type=str,
+        required=True,
+    )
+    args = parser.parse_args()
+
+    setup_logger()
+
+    try:
+        csvData = downloadData(args.url)
+    except Exception as e:
+        print(f"Error downloading the data file: {e}")
+        sys.exit(1)
+
+    personData = processData(csvData)
+
+    while True:
+        user_input = input("Enter an ID to look up (0 or negative to exit): ")
+        try:
+            id_num = int(user_input)
+        except ValueError:
+            print("Please enter a valid integer.")
+            continue
+
+        if id_num <= 0:
+            break
+
+        displayPerson(id_num, personData)
+
+
+if __name__ == "__main__":
+    main()
